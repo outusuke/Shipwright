@@ -116,7 +116,13 @@ std::vector<Finger> GatherFingers(const ImVec2& display) {
 
 // A pad or keyboard takes over, so the overlay only shows while no controller is attached.
 bool ControllerAttached() {
-    return SDL_NumJoysticks() > 0;
+    // SDL lists the built-in accelerometer as a joystick on Android, it isn't a game controller.
+    for (int i = 0; i < SDL_NumJoysticks(); i++) {
+        if (SDL_IsGameController(i)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace
