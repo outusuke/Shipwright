@@ -25,6 +25,13 @@ FetchContent_Declare(Vorbis GIT_REPOSITORY https://github.com/xiph/vorbis.git GI
                      OVERRIDE_FIND_PACKAGE)
 FetchContent_MakeAvailable(Vorbis)
 
+# Vorbis::* targets only exist for installed copies, soh links against those names.
+foreach(_vorbis_lib vorbis vorbisenc vorbisfile)
+    if(TARGET ${_vorbis_lib} AND NOT TARGET Vorbis::${_vorbis_lib})
+        add_library(Vorbis::${_vorbis_lib} ALIAS ${_vorbis_lib})
+    endif()
+endforeach()
+
 # opusfile ships no CMake project, so only the sources soh needs are compiled (no HTTP streaming).
 # Picture tag parsing lives in info.c; there is no picture.c in v0.12.
 FetchContent_Declare(opusfile GIT_REPOSITORY https://github.com/xiph/opusfile.git GIT_TAG v0.12 GIT_SHALLOW TRUE)
