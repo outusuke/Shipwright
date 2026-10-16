@@ -118,6 +118,9 @@ enum class ButtonId : int {
 void Extractor::ShowErrorBox(const char* title, const char* text) {
 #ifdef _WIN32
     MessageBoxA(nullptr, text, title, MB_OK | MB_ICONERROR);
+#elif defined(__ANDROID__)
+    // Extraction runs from the launcher before SDL exists; the message goes back through JNI instead.
+    SPDLOG_ERROR("{}: {}", title, text);
 #else
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, title, text, nullptr);
 #endif

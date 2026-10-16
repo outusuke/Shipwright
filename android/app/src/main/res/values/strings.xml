@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Ship of Harkinian</string>
+    <string name="launcher_choose_rom">Choose Ocarina of Time ROM</string>
+    <string name="launcher_preparing">Unpacking the bundled game files…</string>
+    <string name="launcher_importing">Reading the selected ROM…</string>
+    <string name="launcher_extracting">Extracting the game assets from your ROM.\n\nThis happens once and can take a few minutes.</string>
+</resources>

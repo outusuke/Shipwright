@@ -226,7 +226,13 @@ set(ALL_FILES
 ################################################################################
 # Target
 ################################################################################
-add_executable(${PROJECT_NAME} ${ALL_FILES})
+if(ANDROID)
+    # SDLActivity loads this as libmain.so and calls SDL_main.
+    add_library(${PROJECT_NAME} SHARED ${ALL_FILES})
+    set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME "main")
+else()
+    add_executable(${PROJECT_NAME} ${ALL_FILES})
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 use_props(${PROJECT_NAME} "${CMAKE_CONFIGURATION_TYPES}" "${DEFAULT_CXX_PROPS}")
@@ -674,6 +680,32 @@ elseif(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
         -lglad
         Threads::Threads
     )
+elseif(ANDROID)
+    include(${CMAKE_SOURCE_DIR}/CMake/AndroidDeps.cmake)
+    set(ADDITIONAL_LIBRARY_DEPENDENCIES
+        "libultraship;"
+        "torch;"
+        Ogg::ogg
+        Vorbis::vorbis
+        Vorbis::vorbisenc
+        Vorbis::vorbisfile
+        Opus::opus
+        OpusFile::opusfile
+        libzip::zip
+        GLESv3
+        EGL
+        android
+        log
+        ${CMAKE_DL_LIBS}
+    )
+    if(TARGET SDL2::SDL2)
+        list(APPEND ADDITIONAL_LIBRARY_DEPENDENCIES SDL2::SDL2)
+    endif()
+    if(TARGET SDL2_net::SDL2_net)
+        list(APPEND ADDITIONAL_LIBRARY_DEPENDENCIES SDL2_net::SDL2_net)
+    elseif(TARGET SDL2_net::SDL2_net-static)
+        list(APPEND ADDITIONAL_LIBRARY_DEPENDENCIES SDL2_net::SDL2_net-static)
+    endif()
 elseif(CMAKE_SYSTEM_NAME STREQUAL "CafeOS")
     find_package(SDL2 REQUIRED)
     set(ADDITIONAL_LIBRARY_DEPENDENCIES
@@ -714,8 +746,10 @@ else()
     endif()
 endif()
 
-find_package(libzip REQUIRED)
-list(APPEND ADDITIONAL_LIBRARY_DEPENDENCIES libzip::zip)
+if(NOT ANDROID)
+    find_package(libzip REQUIRED)
+    list(APPEND ADDITIONAL_LIBRARY_DEPENDENCIES libzip::zip)
+endif()
 
 if(USE_ASAN)
     target_compile_options(libultraship PRIVATE -fsanitize=address)
@@ -744,7 +778,7 @@ if(USE_ASAN)
 endif()
 
 
-if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|NintendoSwitch|CafeOS")
+if(NOT CMAKE_SYSTEM_NAME MATCHES "Darwin|NintendoSwitch|CafeOS|Android")
 INSTALL(TARGETS soh DESTINATION . COMPONENT ship)
 endif()
 
@@ -761,7 +795,7 @@ configure_file( ${CMAKE_CURRENT_SOURCE_DIR}/macosx/Info.plist.in ${CMAKE_BINARY_
 INSTALL(TARGETS soh DESTINATION ../MacOS COMPONENT ship)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt DESTINATION ../MacOS COMPONENT ship)
 INSTALL(FILES ${CMAKE_BINARY_DIR}/soh/soh.o2r DESTINATION ../Resources COMPONENT ship)
-elseif(NOT "${CMAKE_SYSTEM_NAME}" MATCHES "NintendoSwitch|CafeOS")
+elseif(NOT "${CMAKE_SYSTEM_NAME}" MATCHES "NintendoSwitch|CafeOS|Android")
 INSTALL(FILES ${CMAKE_BINARY_DIR}/gamecontrollerdb.txt DESTINATION . COMPONENT ship)
 endif()
 

@@ -644,9 +644,16 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
                             std::filesystem::exists(Ship::Context::LocateFileAcrossAppDirs("oot.o2r", appShortName));
 
                         if (!ootO2RExists) {
+#ifdef __ANDROID__
+                            // The launcher activity does the ROM import, so the only way forward is a restart.
+                            SohGui::RegisterPopup("No O2R Files",
+                                                  "No ROM archives found.\nRestart the app to import your ROM.",
+                                                  "OK", "", [&]() { exit(0); });
+#else
                             SohGui::RegisterPopup(
                                 "No O2R Files", "No O2R files found. Generate one now?", "Yes", "No",
                                 [&]() { promptStep = PS_LOCAL; }, [&]() { exit(0); });
+#endif
                         } else {
                             extractStep = ES_VERIFY;
                         }

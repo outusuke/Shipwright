@@ -351,3 +351,17 @@ You'll have to enable the ability to run unsigned scripts through PowerShell. To
 
 ### Runner on UNIX systems
 If you're on macOS or Linux take a look at `.github/macports.yml` or `.github/workflows/apt-deps.txt` to see the dependencies expected to be on your machine.
+
+## Android
+Needs JDK 17, the Android SDK with NDK `30.0.15729638`, platform 36 and CMake `3.30.3`, all pinned in `android/app/build.gradle.kts`. Only `arm64-v8a` is built.
+
+The APK bundles `soh.o2r` and the Torch recipes, so generate `soh.o2r` on a desktop build first:
+```sh
+cmake -H. -Bbuild-cmake -GNinja -DSOH_TOOLS_ONLY=ON
+cmake --build build-cmake --target GenerateSohOtr
+```
+This leaves `soh.o2r` in the repo root, where Gradle picks it up:
+```sh
+android/gradlew -p android assembleDebug
+```
+The ROM is picked on the device and extracted there; nothing from it ships in the APK.

@@ -43,6 +43,10 @@ void Main_LogSystemHeap(void) {
     osSyncPrintf(VT_RST);
 }
 
+#ifdef __ANDROID__
+#include <SDL2/SDL_main.h>
+#endif
+
 #ifdef _WIN32
 int SDL_main(int argc, char* argv[]) {
     AllocConsole();

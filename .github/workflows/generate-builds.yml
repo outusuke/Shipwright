@@ -253,3 +253,59 @@ jobs:
       with:
         key: ${{ steps.restore-cache-vcpkg.outputs.cache-primary-key }}
         path: vcpkg
+
+  build-android:
+    needs: generate-soh-otr
+    runs-on: ubuntu-latest
+    env:
+      # Job-level because a step's own env isn't visible to its `if`.
+      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+    steps:
+    - name: Git Checkout
+      uses: actions/checkout@v7
+      with:
+        submodules: true
+    - name: Setup JDK
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+    - name: Install Android SDK components
+      # Versions match android/app/build.gradle.kts
+      run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "cmake;3.30.3" "ndk;30.0.15729638" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+    # PackGameData reads soh.o2r from the repo root
+    - name: Download soh.o2r
+      uses: actions/download-artifact@v8
+      with:
+        name: soh.o2r
+        path: .
+    - name: Write release keystore
+      if: env.KEYSTORE_BASE64 != ''
+      run: |
+        echo "$KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+        test -s android/app/release.keystore || (echo "ERROR: empty keystore" && exit 1)
+    - name: Build APK
+      run: android/gradlew -p android assembleRelease
+      env:
+        KEYSTORE_FILE: ${{ env.KEYSTORE_BASE64 != '' && 'release.keystore' || '' }}
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+    - name: Collect APK
+      run: |
+        APK=android/app/build/outputs/apk/release/app-release.apk
+        ls -la "$APK" || (echo "ERROR: APK not found" && exit 1)
+        for entry in assets/gamedata.zip assets/gamedata.version; do
+          unzip -Z1 "$APK" | grep -qx "$entry" || (echo "ERROR: $entry missing from the APK" && exit 1)
+        done
+        cp "$APK" soh.apk
+    - name: Clean up keystore
+      if: always()
+      run: rm -f android/app/release.keystore
+    - name: Upload build
+      uses: actions/upload-artifact@v7
+      with:
+        name: soh-android
+        path: soh.apk

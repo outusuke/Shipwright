@@ -6,6 +6,9 @@
 #include "soh/Enhancements/controls/Mouse.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
+#ifdef __ANDROID__
+#include "soh/Enhancements/controls/TouchControls.h"
+#endif
 
 s32 D_8012D280 = 1;
 
@@ -317,6 +320,9 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
     }
     osRecvMesg(queue, NULL, OS_MESG_BLOCK);
     osContGetReadData(padMgr->pads);
+#ifdef __ANDROID__
+    TouchControls_ApplyPad(padMgr->pads);
+#endif
 
     Mouse_UpdateAll();
 

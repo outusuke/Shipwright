@@ -24,6 +24,9 @@
 #include "soh/Network/Anchor/Anchor.h"
 #include "soh/Enhancements/audio/AudioEditor.h"
 #include "soh/Enhancements/controls/InputViewer.h"
+#ifdef __ANDROID__
+#include "soh/Enhancements/controls/TouchControls.h"
+#endif
 #include "soh/Enhancements/cosmetics/CosmeticsEditor.h"
 #include "soh/Enhancements/debugger/actorViewer.h"
 #include "soh/Enhancements/debugger/colViewer.h"
@@ -87,6 +90,9 @@ std::shared_ptr<ModMenuWindow> mModMenuWindow;
 std::shared_ptr<AudioEditor> mAudioEditorWindow;
 std::shared_ptr<InputViewer> mInputViewer;
 std::shared_ptr<InputViewerSettingsWindow> mInputViewerSettings;
+#ifdef __ANDROID__
+std::shared_ptr<TouchControlsOverlay> mTouchControls;
+#endif
 std::shared_ptr<CosmeticsEditorWindow> mCosmeticsEditorWindow;
 std::shared_ptr<ActorViewerWindow> mActorViewerWindow;
 std::shared_ptr<ColViewerWindow> mColViewerWindow;
@@ -203,6 +209,11 @@ void SetupGuiElements() {
     mInputViewerSettings = std::make_shared<InputViewerSettingsWindow>(CVAR_WINDOW("InputViewerSettings"),
                                                                        "Input Viewer Settings", ImVec2(500, 525));
     gui->AddGuiWindow(mInputViewerSettings);
+#ifdef __ANDROID__
+    mTouchControls = std::make_shared<TouchControlsOverlay>(CVAR_WINDOW("TouchControls"), "Touch Controls");
+    mTouchControls->Show();
+    gui->AddGuiWindow(mTouchControls);
+#endif
     mCosmeticsEditorWindow =
         std::make_shared<CosmeticsEditorWindow>(CVAR_WINDOW("CosmeticsEditor"), "Cosmetics Editor", ImVec2(550, 520));
     gui->AddGuiWindow(mCosmeticsEditorWindow);

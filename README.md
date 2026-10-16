@@ -25,6 +25,12 @@ You can verify you have dumped a supported copy of the game by using the compati
 * When prompted, select your supported copy of the game.
 * Saves, settings and `oot.o2r` are stored in `~/.local/share/soh/`. If the folder you launch from already has `shipofharkinian.json`, `oot.o2r` or `oot-mq.o2r`, that folder is used instead. Set `SHIP_HOME` to choose another folder.
 
+#### Android
+* Install the APK and launch it.
+* Tap **Choose Ocarina of Time ROM** and pick your own `.z64`, `.n64` or `.v64`. It is extracted into `oot.o2r` on the device, which takes a few minutes the first time, and the ROM copy is deleted afterwards.
+* On-screen controls show while no gamepad is connected. Tap **Menu** at the top to open the settings menu.
+* Saves, settings and the `.o2r` files are stored under `Android/data/com.harbourmasters.soh/files/`.
+
 #### macOS
 * Run `soh.app`. When prompted, select your supported copy of the game.
 * You should see a notification saying `Processing OTR`, then, once the process is complete, you should get a notification saying `OTR Successfully Generated`, then the game should start.
