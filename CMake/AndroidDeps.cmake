@@ -39,11 +39,28 @@ target_include_directories(opusfile PUBLIC ${opusfile_SOURCE_DIR}/include)
 target_link_libraries(opusfile PUBLIC Ogg::ogg Opus::opus)
 add_library(OpusFile::opusfile ALIAS opusfile)
 
+# SDL_net's own CMake looks SDL2 up through a helper that can't see the copy libultraship builds, so
+# only its C sources are compiled. SOURCE_SUBDIR points at nothing so MakeAvailable just downloads it.
 FetchContent_Declare(SDL2_net GIT_REPOSITORY https://github.com/libsdl-org/SDL_net.git GIT_TAG release-2.2.0
-                     GIT_SHALLOW TRUE OVERRIDE_FIND_PACKAGE)
-set(SDL2NET_INSTALL OFF CACHE BOOL "" FORCE)
-set(SDL2NET_SAMPLES OFF CACHE BOOL "" FORCE)
+                     GIT_SHALLOW TRUE SOURCE_SUBDIR _no_cmake)
 FetchContent_MakeAvailable(SDL2_net)
+# soh includes <SDL2/SDL_net.h>
+file(COPY ${sdl2_net_SOURCE_DIR}/SDL_net.h DESTINATION ${CMAKE_BINARY_DIR}/sdl2_net_include/SDL2)
+add_library(SDL2_net STATIC
+    ${sdl2_net_SOURCE_DIR}/SDLnet.c
+    ${sdl2_net_SOURCE_DIR}/SDLnetTCP.c
+    ${sdl2_net_SOURCE_DIR}/SDLnetUDP.c
+    ${sdl2_net_SOURCE_DIR}/SDLnetselect.c
+)
+target_include_directories(SDL2_net PUBLIC ${CMAKE_BINARY_DIR}/sdl2_net_include ${CMAKE_BINARY_DIR}/sdl2_net_include/SDL2)
+target_include_directories(SDL2_net PRIVATE ${sdl2_net_SOURCE_DIR})
+foreach(_sdl_target SDL2::SDL2 SDL2)
+    if(TARGET ${_sdl_target})
+        target_link_libraries(SDL2_net PUBLIC ${_sdl_target})
+        break()
+    endif()
+endforeach()
+add_library(SDL2_net::SDL2_net ALIAS SDL2_net)
 
 # LUS may already pull libzip in for its own use.
 if(NOT TARGET libzip::zip)
