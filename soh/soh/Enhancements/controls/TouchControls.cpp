@@ -7,11 +7,14 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <libultraship/libultra/controller.h>
 #include <ship/Context.h>
+#include <ship/window/Window.h>
+#include <ship/window/gui/Gui.h>
 
 #include <algorithm>
 #include <cmath>
 #include <vector>
 
+#include "soh/SohGui/SohMenu.h"
 #include "soh/cvar_prefixes.h"
 #include "z64.h"
 
