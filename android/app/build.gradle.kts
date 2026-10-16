@@ -1,6 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.security.MessageDigest
-import java.util.Properties
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
@@ -16,15 +15,6 @@ val projectVersion: String =
         .find(File(repositoryRoot, "CMakeLists.txt").readText())
         ?.groupValues?.get(1)
         ?: "0.0.0"
-
-val keystoreProperties = Properties().apply {
-    val file = rootProject.file("key.properties")
-    if (file.isFile) file.inputStream().use { load(it) }
-}
-
-// Forks and fresh clones have no release key; fall back to the debug one so the APK still installs.
-val hasReleaseKeystore =
-    keystoreProperties.getProperty("storeFile") != null || System.getenv("KEYSTORE_FILE") != null
 
 // Torch runs on the device and reads its recipes (config.yml + per-version ymls) from disk,
 // so they ship as one zip that the launcher unpacks on first run.
@@ -125,25 +115,6 @@ android {
         }
     }
 
-    signingConfigs {
-        if (hasReleaseKeystore) {
-            create("release") {
-                val configuredStore = keystoreProperties.getProperty("storeFile")
-                if (configuredStore != null) {
-                    storeFile = rootProject.file(configuredStore)
-                    storePassword = keystoreProperties.getProperty("storePassword")
-                    keyAlias = keystoreProperties.getProperty("keyAlias")
-                    keyPassword = keystoreProperties.getProperty("keyPassword")
-                } else {
-                    storeFile = file(System.getenv("KEYSTORE_FILE"))
-                    storePassword = System.getenv("KEYSTORE_PASSWORD")
-                    keyAlias = System.getenv("KEY_ALIAS")
-                    keyPassword = System.getenv("KEY_PASSWORD")
-                }
-            }
-        }
-    }
-
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -151,7 +122,8 @@ android {
         release {
             // The Kotlin layer is tiny and the JNI bridge looks classes up by name.
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName(if (hasReleaseKeystore) "release" else "debug")
+            // Debug key for now, so the release APK installs without a keystore.
+            signingConfig = signingConfigs.getByName("debug")
             ndk {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }

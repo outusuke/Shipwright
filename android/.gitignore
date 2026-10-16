@@ -32,7 +32,3 @@ google-services.json
 
 # Android Profiling
 *.hprof
-
-# Signing config (contains passwords)
-key.properties
-keystore.properties
