@@ -26,13 +26,13 @@ FetchContent_Declare(Vorbis GIT_REPOSITORY https://github.com/xiph/vorbis.git GI
 FetchContent_MakeAvailable(Vorbis)
 
 # opusfile ships no CMake project, so only the sources soh needs are compiled (no HTTP streaming).
+# Picture tag parsing lives in info.c; there is no picture.c in v0.12.
 FetchContent_Declare(opusfile GIT_REPOSITORY https://github.com/xiph/opusfile.git GIT_TAG v0.12 GIT_SHALLOW TRUE)
 FetchContent_MakeAvailable(opusfile)
 add_library(opusfile STATIC
     ${opusfile_SOURCE_DIR}/src/info.c
     ${opusfile_SOURCE_DIR}/src/internal.c
     ${opusfile_SOURCE_DIR}/src/opusfile.c
-    ${opusfile_SOURCE_DIR}/src/picture.c
     ${opusfile_SOURCE_DIR}/src/stream.c
 )
 target_include_directories(opusfile PUBLIC ${opusfile_SOURCE_DIR}/include)
