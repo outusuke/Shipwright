@@ -115,6 +115,18 @@ android {
         }
     }
 
+    signingConfigs {
+        System.getenv("SOH_KEYSTORE_FILE")?.let { keystore ->
+            create("shared") {
+                storeFile = file(keystore)
+                storeType = "pkcs12"
+                storePassword = System.getenv("SOH_KEYSTORE_PASSWORD")
+                keyAlias = "soh"
+                keyPassword = System.getenv("SOH_KEYSTORE_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -122,8 +134,8 @@ android {
         release {
             // The Kotlin layer is tiny and the JNI bridge looks classes up by name.
             isMinifyEnabled = false
-            // Debug key for now, so the release APK installs without a keystore.
-            signingConfig = signingConfigs.getByName("debug")
+            // Falls back to the debug key when no keystore is configured, e.g. on forks.
+            signingConfig = signingConfigs.findByName("shared") ?: signingConfigs.getByName("debug")
             ndk {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }
