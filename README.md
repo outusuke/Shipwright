@@ -29,7 +29,7 @@ You can verify you have dumped a supported copy of the game by using the compati
 * Install the APK and launch it.
 * Tap **Choose Ocarina of Time ROM** and pick your own `.z64`, `.n64` or `.v64`. It is extracted into `oot.o2r` on the device, which takes a few minutes the first time, and the ROM copy is deleted afterwards.
 * On-screen controls show while no gamepad is connected. Tap **Menu** at the top to open the settings menu.
-* Saves, settings and the `.o2r` files are stored under `Android/data/com.harbourmasters.soh/files/`.
+* Saves, settings and the `.o2r` files are stored under `Android/media/com.harbourmasters.soh/`.
 
 #### macOS
 * Run `soh.app`. When prompted, select your supported copy of the game.

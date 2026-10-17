@@ -7,7 +7,14 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.util.zip.ZipInputStream
 
-// Everything lives in getExternalFilesDir(): soh.o2r and assets/ come from the APK, oot.o2r is built from the ROM.
+// Android/media opens in file managers without ADB, and .nomedia keeps the gallery from indexing game files.
+fun appMediaDir(context: Context): File? =
+    context.externalMediaDirs.filterNotNull().firstOrNull()?.also {
+        it.mkdirs()
+        runCatching { File(it, ".nomedia").createNewFile() }
+    }
+
+// Everything lives in Android/media: soh.o2r and assets/ come from the APK, oot.o2r is built from the ROM.
 object GameAssets {
 
     const val ROM_NAME = "baserom.z64"
@@ -19,7 +26,7 @@ object GameAssets {
     private const val COPY_BUFFER_BYTES = 1 shl 17
 
     fun gameDir(context: Context): File =
-        (context.getExternalFilesDir(null) ?: context.filesDir).also { it.mkdirs() }
+        (appMediaDir(context) ?: context.getExternalFilesDir(null) ?: context.filesDir).also { it.mkdirs() }
 
     fun romFile(context: Context) = File(gameDir(context), ROM_NAME)
 

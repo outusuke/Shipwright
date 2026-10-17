@@ -22,7 +22,7 @@
 
     <uses-permission android:name="android.permission.VIBRATE" />
 
-    <!-- No storage permissions: the ROM comes through the document picker and everything lives in the app's external files dir. -->
+    <!-- No storage permissions: the ROM comes through the document picker and everything lives in the app's external media dir. -->
 
     <!-- LUS rejects tagged heap pointers when checking for texture paths, which garbles font glyphs. -->
     <application

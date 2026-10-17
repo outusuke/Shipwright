@@ -6,12 +6,17 @@ import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import java.io.File
 import org.libsdl.app.SDLActivity
 
 class MainActivity : SDLActivity() {
 
     // org/libsdl/app stays byte-identical to the SDL release libultraship pins, so the library list is overridden here.
     override fun getLibraries(): Array<String> = arrayOf("SDL2", "main")
+
+    // SDL derives the game folder from getExternalFilesDir(), so it has to match GameAssets.
+    override fun getExternalFilesDir(type: String?): File? =
+        if (type == null) appMediaDir(this) ?: super.getExternalFilesDir(null) else super.getExternalFilesDir(type)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
