@@ -24,8 +24,10 @@
 
     <!-- No storage permissions: the ROM comes through the document picker and everything lives in the app's external files dir. -->
 
+    <!-- LUS rejects tagged heap pointers when checking for texture paths, which garbles font glyphs. -->
     <application
         android:allowBackup="false"
+        android:allowNativeHeapPointerTagging="false"
         android:appCategory="game"
         android:hardwareAccelerated="true"
         android:icon="@drawable/ic_launcher"
