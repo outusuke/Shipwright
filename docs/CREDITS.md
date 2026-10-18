@@ -43,3 +43,6 @@
     MicTheMicrophone | Gwonam / The King
     Amphibibro | Link
     AceHeart | Zelda
+
+## Touch Controls
+    Filippo Scognamiglio | Touch layout and styling adapted from Lemuroid (GPL-3.0) and PadKit (Apache-2.0), see docs/licenses
