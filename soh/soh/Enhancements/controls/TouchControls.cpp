@@ -1,5 +1,10 @@
 #ifdef __ANDROID__
 
+// Touch layout and styling ported from the N64 pad in Lemuroid (lemuroid-touchinput),
+// https://github.com/Swordfish90/Lemuroid, Copyright (C) Filippo Scognamiglio, GPL-3.0.
+// Radial placement follows PadKit, https://github.com/Swordfish90/PadKit, Apache-2.0.
+// Rewritten for ImGui; the license texts are in docs/licenses.
+
 #include "TouchControls.h"
 
 #include <SDL2/SDL.h>
@@ -21,35 +26,66 @@
 namespace {
 
 constexpr float kStickMax = 80.0f;
+constexpr float kPi = 3.14159265f;
+// The primary dial is 180dp at Lemuroid's default scale, so one dp is 1/180 of it.
+constexpr float kPrimaryDialDp = 180.0f;
+constexpr float kDeadZoneSq = 0.025f;
 
 struct Finger {
     ImVec2 pos;
     SDL_FingerID id;
 };
 
-struct Button {
+struct Anchor {
+    ImVec2 pos;
+    float size;
     uint16_t mask;
-    const char* label;
-    ImU32 color;
+};
+
+enum class Kind { Button, Face, Cross, Analog };
+enum class Icon { None, Play, Menu };
+
+struct Control {
+    Kind kind = Kind::Button;
     ImVec2 center;
-    float radius;
-    bool pressed;
+    float size = 0.0f;
+    uint16_t mask = 0;
+    const char* label = nullptr;
+    Icon icon = Icon::None;
+    bool isMenu = false;
+    bool triangles = false;
+    std::vector<Anchor> anchors;
+    std::vector<const char*> labels;
+    size_t primaryCount = 0;
+    std::vector<SDL_FingerID> tracked;
+    uint16_t down = 0;
+    bool pressed = false;
+    ImVec2 start;
+    ImVec2 stick;
 };
 
 struct State {
     bool active = false;
-    std::vector<Button> buttons;
-    ImVec2 menuCenter;
-    float menuRadius = 0.0f;
+    std::vector<Control> controls;
+    ImVec2 layoutDisplay;
+    float layoutScale = 0.0f;
+    float dp = 1.0f;
     bool menuDown = false;
-    bool stickHeld = false;
-    ImVec2 stickAnchor;
-    ImVec2 stickPos;
-    float stickTravel = 0.0f;
-    SDL_FingerID stickFinger = -1;
 };
 
 State sState;
+
+struct Satellite {
+    float degrees;
+    float scale;
+};
+
+struct Radial {
+    ImVec2 center;
+    float size = 0.0f;
+    std::vector<ImVec2> satCenters;
+    std::vector<float> satSizes;
+};
 
 float Dist(const ImVec2& a, const ImVec2& b) {
     return std::hypot(a.x - b.x, a.y - b.y);
@@ -59,42 +95,149 @@ bool Enabled() {
     return CVarGetInteger(CVAR_SETTING("TouchControls.Enabled"), 1) != 0;
 }
 
-void ComputeLayout(State& s, const ImVec2& display) {
-    const float scale = std::clamp(CVarGetFloat(CVAR_SETTING("TouchControls.Scale"), 1.0f), 0.5f, 2.0f);
-    const float u = std::min(display.x, display.y) * 0.055f * scale;
-    const float m = u * 1.6f;
-    const float w = display.x;
-    const float h = display.y;
+float SizeAroundRing(int count) {
+    const float s = std::sin(kPi / count);
+    return s / (1.0f - s);
+}
 
-    const ImU32 green = IM_COL32(60, 200, 90, 255);
-    const ImU32 red = IM_COL32(220, 70, 60, 255);
-    const ImU32 yellow = IM_COL32(240, 200, 60, 255);
-    const ImU32 grey = IM_COL32(170, 170, 180, 255);
+float SizeOnRing(int count) {
+    const float s = std::sin(kPi / std::max(count, 2));
+    return s / (1.0f + s);
+}
 
-    s.buttons.clear();
-    const auto add = [&](uint16_t mask, const char* label, ImU32 color, float x, float y, float r) {
-        s.buttons.push_back({ mask, label, color, ImVec2(x, y), r, false });
-    };
+std::vector<Anchor> RingAnchors(const std::vector<uint16_t>& masks, float rotationDegrees, bool withComposites) {
+    const int n = static_cast<int>(masks.size());
+    const float rotation = rotationDegrees * kPi / 180.0f;
+    std::vector<Anchor> anchors;
+    for (int i = 0; i < n; i++) {
+        const float angle = rotation + 2.0f * kPi * i / n;
+        anchors.push_back({ ImVec2(std::cos(angle), std::sin(angle)), SizeOnRing(n), masks[i] });
+    }
+    if (withComposites) {
+        for (int i = 0; i < n; i++) {
+            const float angle = rotation + 2.0f * kPi * (i + 0.5f) / n;
+            anchors.push_back({ ImVec2(std::cos(angle) * 0.85f, std::sin(angle) * 0.85f), 0.1f,
+                                static_cast<uint16_t>(masks[i] | masks[(i + 1) % n]) });
+        }
+    }
+    return anchors;
+}
 
-    add(BTN_A, "A", green, w - m * 1.3f, h - m * 1.4f, u * 1.5f);
-    add(BTN_B, "B", red, w - m * 2.6f, h - m * 0.9f, u * 1.2f);
+const Anchor* NearestAnchor(const std::vector<Anchor>& anchors, const ImVec2& p) {
+    const Anchor* best = nullptr;
+    float bestDist = 0.0f;
+    for (const auto& anchor : anchors) {
+        const float d = std::max(Dist(p, anchor.pos) - anchor.size, 0.0f);
+        if (best == nullptr || d < bestDist) {
+            best = &anchor;
+            bestDist = d;
+        }
+    }
+    return best;
+}
 
-    const float cx = w - m * 1.4f;
-    const float cy = h * 0.40f;
-    const float cs = u * 1.5f;
-    add(BTN_CUP, "C^", yellow, cx, cy - cs, u * 0.95f);
-    add(BTN_CDOWN, "Cv", yellow, cx, cy + cs, u * 0.95f);
-    add(BTN_CLEFT, "C<", yellow, cx - cs, cy, u * 0.95f);
-    add(BTN_CRIGHT, "C>", yellow, cx + cs, cy, u * 0.95f);
+Radial PlaceRadial(const std::vector<Satellite>& satellites, bool rightSide, const ImVec2& display, float marginX,
+                   float marginY, float maxSize) {
+    const float base = SizeAroundRing(12);
+    float minX = -0.5f;
+    float minY = -0.5f;
+    float maxX = 0.5f;
+    float maxY = 0.5f;
+    std::vector<ImVec2> offsets;
+    for (const auto& sat : satellites) {
+        const float angle = -sat.degrees * kPi / 180.0f;
+        const float distance = 0.5f * (1.0f + base * sat.scale);
+        const ImVec2 pos(std::cos(angle) * distance, std::sin(angle) * distance);
+        const float radius = base * sat.scale * 0.5f;
+        minX = std::min(minX, pos.x - radius);
+        minY = std::min(minY, pos.y - radius);
+        maxX = std::max(maxX, pos.x + radius);
+        maxY = std::max(maxY, pos.y + radius);
+        offsets.push_back(pos);
+    }
+    const float width = maxX - minX;
+    const float height = maxY - minY;
 
-    add(BTN_Z, "Z", grey, m * 1.1f, h * 0.30f, u * 1.1f);
-    add(BTN_L, "L", grey, m * 1.1f, h * 0.12f, u * 0.9f);
-    add(BTN_R, "R", grey, w - m * 1.1f, h * 0.12f, u * 0.9f);
-    add(BTN_START, "S", grey, w * 0.5f, h - m * 0.7f, u * 0.9f);
+    Radial radial;
+    radial.size = std::min({ (display.x * 0.5f - marginX) / width, (display.y - marginY * 2.0f) / height, maxSize });
+    const float left = rightSide ? display.x - marginX - radial.size * width : marginX;
+    const float top = display.y - marginY - radial.size * height;
+    radial.center = ImVec2(left - minX * radial.size, top - minY * radial.size);
+    for (size_t i = 0; i < satellites.size(); i++) {
+        radial.satCenters.push_back(
+            ImVec2(radial.center.x + offsets[i].x * radial.size, radial.center.y + offsets[i].y * radial.size));
+        radial.satSizes.push_back(radial.size * base * satellites[i].scale);
+    }
+    return radial;
+}
 
-    s.menuCenter = ImVec2(w * 0.5f, m * 0.6f);
-    s.menuRadius = u * 0.9f;
-    s.stickTravel = u * 2.6f;
+Control MakeButton(const ImVec2& center, float size, uint16_t mask, const char* label, Icon icon = Icon::None,
+                   bool isMenu = false) {
+    Control control;
+    control.kind = Kind::Button;
+    control.center = center;
+    control.size = size;
+    control.mask = mask;
+    control.label = label;
+    control.icon = icon;
+    control.isMenu = isMenu;
+    return control;
+}
+
+Control MakeRing(Kind kind, const ImVec2& center, float size, const std::vector<uint16_t>& masks, float rotationDegrees,
+                 bool withComposites) {
+    Control control;
+    control.kind = kind;
+    control.center = center;
+    control.size = size;
+    control.anchors = RingAnchors(masks, rotationDegrees, withComposites);
+    control.primaryCount = masks.size();
+    return control;
+}
+
+void ComputeLayout(State& s, const ImVec2& display, float scale) {
+    const float marginX = display.y * 0.07f;
+    const float marginY = display.y * 0.04f;
+    const float maxSize = display.y * 0.34f * scale;
+
+    const Radial left = PlaceRadial({ { -80.0f, 2.0f }, { 120.0f, 1.0f }, { 60.0f, 1.0f }, { -120.0f, 1.0f } }, false,
+                                    display, marginX, marginY, maxSize);
+    const Radial right = PlaceRadial({ { 60.0f, 1.0f }, { 120.0f, 1.0f }, { -100.0f, 2.0f }, { -60.0f, 1.0f } }, true,
+                                     display, marginX, marginY, maxSize);
+
+    s.dp = left.size / kPrimaryDialDp;
+    const float inset = 8.0f * s.dp;
+
+    s.controls.clear();
+
+    s.controls.push_back(MakeRing(Kind::Cross, left.center, left.size - inset,
+                                  { BTN_DRIGHT, BTN_DDOWN, BTN_DLEFT, BTN_DUP }, 0.0f, true));
+
+    Control analog;
+    analog.kind = Kind::Analog;
+    analog.center = left.satCenters[0];
+    analog.size = left.satSizes[0] - inset;
+    s.controls.push_back(analog);
+
+    s.controls.push_back(MakeButton(left.satCenters[1], left.satSizes[1] - inset, BTN_L, "L"));
+    s.controls.push_back(MakeButton(left.satCenters[2], left.satSizes[2] - inset, BTN_Z, "Z"));
+
+    Control faces = MakeRing(Kind::Face, right.center, right.size - inset, { BTN_A, BTN_B, BTN_Z }, 90.0f, true);
+    faces.labels = { "A", "B", "Z" };
+    s.controls.push_back(faces);
+
+    s.controls.push_back(MakeButton(right.satCenters[0], right.satSizes[0] - inset, BTN_R, "R"));
+    s.controls.push_back(MakeButton(right.satCenters[1], right.satSizes[1] - inset, BTN_START, nullptr, Icon::Play));
+
+    Control cButtons = MakeRing(Kind::Cross, right.satCenters[2], right.satSizes[2] - inset,
+                                { BTN_CRIGHT, BTN_CDOWN, BTN_CLEFT, BTN_CUP }, 0.0f, false);
+    cButtons.triangles = true;
+    s.controls.push_back(cButtons);
+
+    s.controls.push_back(MakeButton(right.satCenters[3], right.satSizes[3] - inset, 0, nullptr, Icon::Menu, true));
+
+    s.layoutDisplay = display;
+    s.layoutScale = scale;
 }
 
 std::vector<Finger> GatherFingers(const ImVec2& display) {
@@ -125,14 +268,139 @@ bool ControllerAttached() {
     return false;
 }
 
+ImVec2 ToDialSpace(const Control& c, const ImVec2& pos) {
+    const float half = c.size * 0.5f;
+    return ImVec2((pos.x - c.center.x) / half, (pos.y - c.center.y) / half);
+}
+
+void ApplyFinger(Control& c, const ImVec2& pos) {
+    const ImVec2 p = ToDialSpace(c, pos);
+    switch (c.kind) {
+        case Kind::Face:
+            c.down |=
+                NearestAnchor(c.anchors, ImVec2(std::clamp(p.x, -1.0f, 1.0f), std::clamp(p.y, -1.0f, 1.0f)))->mask;
+            break;
+        case Kind::Cross:
+            if (p.x * p.x + p.y * p.y >= kDeadZoneSq) {
+                c.down |= NearestAnchor(c.anchors, p)->mask;
+            }
+            break;
+        case Kind::Analog: {
+            const float half = c.size * 0.5f;
+            float dx = (pos.x - c.start.x) / half;
+            float dy = (c.start.y - pos.y) / half;
+            const float len = std::hypot(dx, dy);
+            // Clamped to a circle rather than PadKit's square so diagonals stay inside the N64 gate.
+            if (len > 1.0f) {
+                dx /= len;
+                dy /= len;
+            }
+            c.stick = ImVec2(dx, dy);
+            break;
+        }
+        case Kind::Button:
+            break;
+    }
+}
+
+void ReleaseAll(State& s) {
+    for (auto& c : s.controls) {
+        c.tracked.clear();
+        c.down = 0;
+        c.pressed = false;
+        c.stick = ImVec2();
+    }
+}
+
+void UpdateControls(State& s, const std::vector<Finger>& fingers) {
+    for (auto& c : s.controls) {
+        c.pressed = false;
+        c.down = 0;
+        c.tracked.erase(std::remove_if(c.tracked.begin(), c.tracked.end(),
+                                       [&fingers](SDL_FingerID id) {
+                                           return std::none_of(fingers.begin(), fingers.end(),
+                                                               [id](const Finger& f) { return f.id == id; });
+                                       }),
+                        c.tracked.end());
+        if (c.tracked.empty()) {
+            c.stick = ImVec2();
+        }
+    }
+
+    for (const auto& finger : fingers) {
+        Control* owner = nullptr;
+        for (auto& c : s.controls) {
+            if (std::find(c.tracked.begin(), c.tracked.end(), finger.id) != c.tracked.end()) {
+                owner = &c;
+                break;
+            }
+        }
+
+        if (owner == nullptr) {
+            for (auto& c : s.controls) {
+                if (Dist(finger.pos, c.center) > c.size * 0.5f) {
+                    continue;
+                }
+                if (c.kind == Kind::Button) {
+                    c.pressed = true;
+                } else if (c.kind == Kind::Face || c.tracked.empty()) {
+                    c.tracked.push_back(finger.id);
+                    c.start = finger.pos;
+                    owner = &c;
+                }
+                break;
+            }
+        }
+
+        if (owner != nullptr) {
+            ApplyFinger(*owner, finger.pos);
+        }
+    }
+}
+
+ImVec2 Rotated(const ImVec2& p, float radians) {
+    const float c = std::cos(radians);
+    const float s = std::sin(radians);
+    return ImVec2(p.x * c - p.y * s, p.x * s + p.y * c);
+}
+
+void DrawTriangle(ImDrawList* drawList, const ImVec2& center, float size, float radians, ImU32 color) {
+    const float k = size / 24.0f;
+    const ImVec2 pts[3] = { { -5.5f, -7.0f }, { 5.5f, 0.0f }, { -5.5f, 7.0f } };
+    ImVec2 out[3];
+    for (int i = 0; i < 3; i++) {
+        const ImVec2 r = Rotated(pts[i], radians);
+        out[i] = ImVec2(center.x + r.x * k, center.y + r.y * k);
+    }
+    drawList->AddTriangleFilled(out[0], out[1], out[2], color);
+}
+
+void DrawChevron(ImDrawList* drawList, const ImVec2& center, float size, float radians, ImU32 color) {
+    const float k = size / 24.0f;
+    const ImVec2 pts[3] = { { -3.0f, -6.0f }, { 3.0f, 0.0f }, { -3.0f, 6.0f } };
+    ImVec2 out[3];
+    for (int i = 0; i < 3; i++) {
+        const ImVec2 r = Rotated(pts[i], radians);
+        out[i] = ImVec2(center.x + r.x * k, center.y + r.y * k);
+    }
+    drawList->AddPolyline(out, 3, color, 0, 2.0f * k);
+}
+
+void DrawMenuIcon(ImDrawList* drawList, const ImVec2& center, float size, ImU32 color) {
+    const float k = size / 24.0f;
+    for (const float y : { -6.0f, -1.0f, 4.0f }) {
+        drawList->AddRectFilled(ImVec2(center.x - 9.0f * k, center.y + y * k),
+                                ImVec2(center.x + 9.0f * k, center.y + (y + 2.0f) * k), color);
+    }
+}
+
 } // namespace
 
 extern "C" void TouchControls_ApplyPad(void* pads) {
     sState.active = false;
-    sState.stickHeld = false;
 
     if (ImGui::GetCurrentContext() == nullptr || !Enabled() || ControllerAttached()) {
-        sState.stickFinger = -1;
+        ReleaseAll(sState);
         return;
     }
 
@@ -143,16 +411,17 @@ extern "C" void TouchControls_ApplyPad(void* pads) {
 
     const bool menuOpen = gui->GetMenuOrMenubarVisible();
     const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const float scale = std::clamp(CVarGetFloat(CVAR_SETTING("TouchControls.Scale"), 1.0f), 0.5f, 2.0f);
     sState.active = true;
-    ComputeLayout(sState, display);
-    const std::vector<Finger> fingers = GatherFingers(display);
+    if (sState.controls.empty() || sState.layoutDisplay.x != display.x || sState.layoutDisplay.y != display.y ||
+        sState.layoutScale != scale) {
+        ComputeLayout(sState, display, scale);
+    }
+    UpdateControls(sState, GatherFingers(display));
 
     bool menuDownNow = false;
-    for (const auto& finger : fingers) {
-        if (Dist(finger.pos, sState.menuCenter) <= sState.menuRadius * 1.3f) {
-            menuDownNow = true;
-            break;
-        }
+    for (const auto& c : sState.controls) {
+        menuDownNow |= c.isMenu && c.pressed;
     }
     // Fires on release so the same tap can't also land on the menu that just opened.
     if (sState.menuDown && !menuDownNow && gui->GetMenu() != nullptr) {
@@ -161,63 +430,30 @@ extern "C" void TouchControls_ApplyPad(void* pads) {
     sState.menuDown = menuDownNow;
 
     if (menuOpen) {
-        sState.stickFinger = -1;
+        ReleaseAll(sState);
         return;
     }
 
     OSContPad* pad = static_cast<OSContPad*>(pads);
-    uint16_t buttons = 0;
-
-    // Each finger presses the nearest button it overlaps; re-evaluated every tick so sliding works.
-    SDL_FingerID stickFinger = -1;
-    bool stickStillDown = false;
-    for (const auto& finger : fingers) {
-        if (finger.id == sState.stickFinger) {
-            stickStillDown = true;
-            stickFinger = finger.id;
-            sState.stickPos = finger.pos;
-            continue;
-        }
-
-        Button* best = nullptr;
-        float bestDist = 0.0f;
-        for (auto& button : sState.buttons) {
-            const float d = Dist(finger.pos, button.center);
-            if (d <= button.radius * 1.25f && (best == nullptr || d < bestDist)) {
-                best = &button;
-                bestDist = d;
-            }
-        }
-        if (best != nullptr) {
-            best->pressed = true;
-            buttons |= best->mask;
-        } else if (sState.stickFinger == -1 && stickFinger == -1 && finger.pos.x < display.x * 0.4f) {
-            // The stick floats: it anchors wherever the thumb lands in the left side of the screen.
-            stickFinger = finger.id;
-            stickStillDown = true;
-            sState.stickAnchor = finger.pos;
-            sState.stickPos = finger.pos;
+    for (const auto& c : sState.controls) {
+        switch (c.kind) {
+            case Kind::Button:
+                if (c.pressed) {
+                    pad[0].button |= c.mask;
+                }
+                break;
+            case Kind::Face:
+            case Kind::Cross:
+                pad[0].button |= c.down;
+                break;
+            case Kind::Analog:
+                if (!c.tracked.empty()) {
+                    pad[0].stick_x = static_cast<int8_t>(c.stick.x * kStickMax);
+                    pad[0].stick_y = static_cast<int8_t>(c.stick.y * kStickMax);
+                }
+                break;
         }
     }
-    sState.stickFinger = stickStillDown ? stickFinger : -1;
-
-    if (sState.stickFinger != -1) {
-        sState.stickHeld = true;
-        float dx = sState.stickPos.x - sState.stickAnchor.x;
-        float dy = sState.stickPos.y - sState.stickAnchor.y;
-        const float len = std::hypot(dx, dy);
-        if (len > sState.stickTravel) {
-            // Drag the anchor along so reversing direction doesn't need a full swipe back.
-            sState.stickAnchor.x += dx / len * (len - sState.stickTravel);
-            sState.stickAnchor.y += dy / len * (len - sState.stickTravel);
-            dx = sState.stickPos.x - sState.stickAnchor.x;
-            dy = sState.stickPos.y - sState.stickAnchor.y;
-        }
-        pad[0].stick_x = static_cast<int8_t>(std::clamp(dx / sState.stickTravel, -1.0f, 1.0f) * kStickMax);
-        pad[0].stick_y = static_cast<int8_t>(std::clamp(-dy / sState.stickTravel, -1.0f, 1.0f) * kStickMax);
-    }
-
-    pad[0].button |= buttons;
 }
 
 void TouchControlsOverlay::Draw() {
@@ -226,30 +462,85 @@ void TouchControlsOverlay::Draw() {
     }
 
     const float opacity = std::clamp(CVarGetFloat(CVAR_SETTING("TouchControls.Opacity"), 0.8f), 0.1f, 1.0f);
+    const float dp = sState.dp;
     ImDrawList* drawList = ImGui::GetForegroundDrawList();
     ImFont* font = ImGui::GetFont();
 
-    const auto alpha = [opacity](ImU32 color, float a) {
-        const ImU32 rgb = color & ~IM_COL32_A_MASK;
-        return rgb | (static_cast<ImU32>(std::min(a, 1.0f) * opacity * 255.0f) << IM_COL32_A_SHIFT);
+    const auto color = [opacity](float luminosity, float alpha) {
+        const int v = static_cast<int>(luminosity * 255.0f);
+        return IM_COL32(v, v, v, static_cast<int>(std::min(alpha * opacity, 1.0f) * 255.0f));
     };
-    const auto text = [&](const ImVec2& center, float size, const char* s, ImU32 color) {
+    const auto text = [&](const ImVec2& center, float size, const char* s, ImU32 col) {
         const ImVec2 ts = font->CalcTextSizeA(size, FLT_MAX, 0.0f, s);
-        drawList->AddText(font, size, ImVec2(center.x - ts.x * 0.5f, center.y - ts.y * 0.5f), color, s);
+        drawList->AddText(font, size, ImVec2(center.x - ts.x * 0.5f, center.y - ts.y * 0.5f), col, s);
     };
+    const auto glass = [&](const ImVec2& center, float radius, float luminosity, float fillAlpha, float shadowAlpha) {
+        constexpr int kShadowSteps = 3;
+        for (int i = kShadowSteps; i >= 1; i--) {
+            drawList->AddCircleFilled(center, radius + 4.0f * dp * i / kShadowSteps,
+                                      color(0.0f, shadowAlpha / kShadowSteps));
+        }
+        drawList->AddCircleFilled(center, radius, color(luminosity, fillAlpha));
+    };
+    const auto background = [&](const ImVec2& center, float diameter) {
+        glass(center, diameter * 0.5f, 1.0f, 0.10f, 0.10f);
+    };
+    const auto composite = [&](const ImVec2& center, float diameter, bool pressed) {
+        glass(center, diameter * 0.5f, pressed ? 0.0f : 1.0f, 0.125f, 0.05f);
+    };
+    const auto foreground = [&](const ImVec2& center, float slot, bool pressed) {
+        const float diameter = slot - 16.0f * dp;
+        glass(center, diameter * 0.5f, pressed ? 0.0f : 1.0f, 0.5f, 0.05f);
+        return diameter;
+    };
+    const auto icons = [&](bool pressed) { return color(pressed ? 1.0f : 0.0f, 0.5f); };
 
-    for (const auto& b : sState.buttons) {
-        drawList->AddCircleFilled(b.center, b.radius, alpha(b.color, b.pressed ? 0.55f : 0.18f));
-        drawList->AddCircle(b.center, b.radius, alpha(b.color, 0.9f), 0, std::max(2.0f, b.radius * 0.08f));
-        text(b.center, b.radius * 0.9f, b.label, alpha(IM_COL32_WHITE, 1.0f));
-    }
-
-    drawList->AddCircleFilled(sState.menuCenter, sState.menuRadius, alpha(IM_COL32(60, 60, 70, 255), 0.5f));
-    text(sState.menuCenter, sState.menuRadius * 0.6f, "Menu", alpha(IM_COL32_WHITE, 1.0f));
-
-    if (sState.stickHeld) {
-        drawList->AddCircle(sState.stickAnchor, sState.stickTravel, alpha(IM_COL32_WHITE, 0.5f), 0, 3.0f);
-        drawList->AddCircleFilled(sState.stickPos, sState.stickTravel * 0.4f, alpha(IM_COL32_WHITE, 0.55f));
+    for (const auto& c : sState.controls) {
+        switch (c.kind) {
+            case Kind::Button: {
+                const bool pressed = c.isMenu ? sState.menuDown : c.pressed;
+                background(c.center, c.size);
+                const float d = foreground(c.center, c.size, pressed);
+                if (c.label != nullptr) {
+                    text(c.center, d * 0.5f, c.label, icons(pressed));
+                } else if (c.icon == Icon::Play) {
+                    DrawTriangle(drawList, c.center, d * 0.5f, 0.0f, icons(pressed));
+                } else if (c.icon == Icon::Menu) {
+                    DrawMenuIcon(drawList, c.center, d * 0.5f, icons(pressed));
+                }
+                break;
+            }
+            case Kind::Analog: {
+                background(c.center, c.size * 0.8f);
+                const ImVec2 knob(c.center.x + c.stick.x * c.size * 0.25f, c.center.y - c.stick.y * c.size * 0.25f);
+                foreground(knob, c.size * 0.66f, !c.tracked.empty());
+                break;
+            }
+            case Kind::Face:
+            case Kind::Cross: {
+                background(c.center, c.size);
+                for (size_t i = 0; i < c.anchors.size(); i++) {
+                    const Anchor& a = c.anchors[i];
+                    const float slot = c.size * a.size;
+                    const float travel = (c.size - slot) * 0.5f;
+                    const ImVec2 pos(c.center.x + a.pos.x * travel, c.center.y + a.pos.y * travel);
+                    const bool pressed = (c.down & a.mask) == a.mask;
+                    if (i >= c.primaryCount) {
+                        composite(pos, slot, pressed);
+                        continue;
+                    }
+                    const float d = foreground(pos, slot, pressed);
+                    if (c.kind == Kind::Face) {
+                        text(pos, d * 0.5f, c.labels[i], icons(pressed));
+                    } else if (c.triangles) {
+                        DrawTriangle(drawList, pos, d * 0.5f, std::atan2(a.pos.y, a.pos.x), icons(pressed));
+                    } else {
+                        DrawChevron(drawList, pos, d * 0.5f, std::atan2(a.pos.y, a.pos.x), icons(pressed));
+                    }
+                }
+                break;
+            }
+        }
     }
 }
 
