@@ -9,9 +9,18 @@
 #include <filesystem>
 #include <string>
 
+#include <imgui.h>
+#include <ship/Context.h>
+#include <ship/window/Window.h>
+#include <ship/window/gui/Gui.h>
+
 #include "soh/Extractor/Extract.h"
+#include "soh/SohGui/SohMenu.h"
+#include "AndroidBridge.h"
 
 namespace {
+
+std::atomic<bool> sMenuToggleRequested{ false };
 
 constexpr const char* kLogTag = "SoH";
 
@@ -70,6 +79,20 @@ JNIEXPORT jstring JNICALL Java_com_harbourmasters_soh_GameAssets_nativeGenerateG
     std::filesystem::remove_all(tmpDir, ec);
 
     return error.empty() ? nullptr : fail(error);
+}
+
+JNIEXPORT void JNICALL Java_com_harbourmasters_soh_MainActivity_nativeRequestMenuToggle(JNIEnv*, jobject) {
+    sMenuToggleRequested = true;
+}
+
+void AndroidBridge_PollMenuToggle(void) {
+    if (!sMenuToggleRequested.exchange(false) || ImGui::GetCurrentContext() == nullptr) {
+        return;
+    }
+    const auto gui = Ship::Context::GetRawInstance()->GetWindow()->GetGui();
+    if (gui != nullptr && gui->GetMenu() != nullptr) {
+        gui->GetMenu()->ToggleVisibility();
+    }
 }
 
 } // extern "C"

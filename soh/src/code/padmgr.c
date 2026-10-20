@@ -8,6 +8,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #ifdef __ANDROID__
 #include "soh/Enhancements/controls/TouchControls.h"
+#include "soh/android/AndroidBridge.h"
 #endif
 
 s32 D_8012D280 = 1;
@@ -321,6 +322,7 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
     osRecvMesg(queue, NULL, OS_MESG_BLOCK);
     osContGetReadData(padMgr->pads);
 #ifdef __ANDROID__
+    AndroidBridge_PollMenuToggle();
     TouchControls_ApplyPad(padMgr->pads);
 #endif
 

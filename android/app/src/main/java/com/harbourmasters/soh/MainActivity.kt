@@ -2,6 +2,8 @@ package com.harbourmasters.soh
 
 import android.os.Build
 import android.os.Bundle
+import android.view.InputDevice
+import android.view.KeyEvent
 import android.view.WindowManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -36,6 +38,26 @@ class MainActivity : SDLActivity() {
             window.attributes.layoutInDisplayCutoutMode =
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
         }
+    }
+
+    private external fun nativeRequestMenuToggle()
+
+    // Handled here rather than through SDL so Select opens the menu whatever mapping the pad ends up with.
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        val fromGamepad = (event.source and InputDevice.SOURCE_GAMEPAD) == InputDevice.SOURCE_GAMEPAD
+        val isSelect = event.keyCode == KeyEvent.KEYCODE_BUTTON_SELECT ||
+            (event.keyCode == KeyEvent.KEYCODE_BACK && fromGamepad)
+        if (!isSelect) {
+            return super.dispatchKeyEvent(event)
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+            try {
+                nativeRequestMenuToggle()
+            } catch (_: UnsatisfiedLinkError) {
+                // Native libraries aren't loaded yet.
+            }
+        }
+        return true
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
