@@ -748,11 +748,11 @@ void aMixImplNEON(uint16_t count, int16_t gain, uint16_t in_addr, uint16_t out_a
             int16x8_t outLoVec2 = vcombine_s16(outLoVec, outLoVec);
             int16x4_t inLoVec = vget_low_s16(inVec);
             int16x8_t inLoVec2 = vcombine_s16(inLoVec, inLoVec);
-            int32x4_t outX7fffHiVec = vmull_high_n_s16(outVec, 0x7FFF);
-            int32x4_t outX7fffLoVec = vmull_high_n_s16(outLoVec2, 0x7FFF);
+            int32x4_t outX7fffHiVec = vmull_n_s16(vget_high_s16(outVec), 0x7FFF);
+            int32x4_t outX7fffLoVec = vmull_n_s16(vget_high_s16(outLoVec2), 0x7FFF);
 
-            int32x4_t inGainLoVec = vmull_high_s16(inLoVec2, gainVec);
-            int32x4_t inGainHiVec = vmull_high_s16(inVec, gainVec);
+            int32x4_t inGainLoVec = vmull_s16(vget_high_s16(inLoVec2), vget_high_s16(gainVec));
+            int32x4_t inGainHiVec = vmull_s16(vget_high_s16(inVec), vget_high_s16(gainVec));
             int32x4_t addVecLo = vaddq_s32(outX7fffLoVec, inGainLoVec);
             int32x4_t addVecHi = vaddq_s32(outX7fffHiVec, inGainHiVec);
             addVecHi = vaddq_s32(addVecHi, x4000Vec);

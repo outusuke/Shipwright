@@ -93,18 +93,19 @@ jobs:
     - name: List all compile errors
       if: failure()
       run: |
-        BUILD_DIR=$(ls -d android/app/.cxx/Release/*/arm64-v8a 2>/dev/null | head -1)
-        if [ -z "$BUILD_DIR" ] || [ ! -f "$BUILD_DIR/build.ninja" ]; then
-          echo "No build.ninja found, the failure was before compilation"
-          exit 0
-        fi
-        "$ANDROID_HOME/cmake/3.30.3/bin/ninja" -C "$BUILD_DIR" -k 0 soh 2>&1 | tee ninja.log || true
-        {
-          echo '### Compile errors'
-          echo '```'
-          grep -E "error:|undefined (reference|symbol)" ninja.log | sort -u
-          echo '```'
-        } >> "$GITHUB_STEP_SUMMARY"
+        FOUND=0
+        for BUILD_DIR in android/app/.cxx/Release/*/arm64-v8a android/app/.cxx/Release/*/armeabi-v7a; do
+          [ -f "$BUILD_DIR/build.ninja" ] || continue
+          FOUND=1
+          "$ANDROID_HOME/cmake/3.30.3/bin/ninja" -C "$BUILD_DIR" -k 0 soh 2>&1 | tee ninja.log || true
+          {
+            echo "### Compile errors ($(basename "$BUILD_DIR"))"
+            echo '```'
+            grep -E "error:|undefined (reference|symbol)" ninja.log | sort -u
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        done
+        [ "$FOUND" = 1 ] || echo "No build.ninja found, the failure was before compilation"
     - name: Collect APK
       run: |
         APK=android/app/build/outputs/apk/release/app-release.apk

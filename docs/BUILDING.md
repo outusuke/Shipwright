@@ -353,7 +353,7 @@ You'll have to enable the ability to run unsigned scripts through PowerShell. To
 If you're on macOS or Linux take a look at `.github/macports.yml` or `.github/workflows/apt-deps.txt` to see the dependencies expected to be on your machine.
 
 ## Android
-Needs JDK 17, the Android SDK with NDK `30.0.15729638`, platform 36 and CMake `3.30.3`, all pinned in `android/app/build.gradle.kts`. Only `arm64-v8a` is built.
+Needs JDK 17, the Android SDK with NDK `30.0.15729638`, platform 36 and CMake `3.30.3`, all pinned in `android/app/build.gradle.kts`. Builds `arm64-v8a` and `armeabi-v7a`.
 
 The APK bundles `soh.o2r` and the Torch recipes, so generate `soh.o2r` on a desktop build first:
 ```sh
